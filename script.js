@@ -24,7 +24,6 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 );
-// מיקום מצלמה מאוזן ששם את הכל בול במרכז המסך
 camera.position.set(0, 0, 7.0);
 
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -60,10 +59,14 @@ composer.addPass(new UnrealBloomPass(
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.target.set(0, 0, 0); // ממוקד בדיוק במרכז האובייקט
-controls.maxPolarAngle = Math.PI / 2.05;
+controls.target.set(0, 0, 0);
 
-// הפרדה בין גרירה ללחיצה
+// יעדי מיקום מצלמה חלקים למצבים השונים
+const camPos3D = new THREE.Vector3(0, 0, 7.0);
+const camPosQR = new THREE.Vector3(0, 6.2, 0.001); // מבט עליון ישר ונקי לברקוד
+const targetCamPos = new THREE.Vector3(0, 0, 7.0);
+
+// הפרדה חכמה בין גרירה (סיבוב) ללחיצה נקייה
 let pointerDownPos = { x: 0, y: 0 };
 let isQrState = false;
 let morphProgress = 0;
@@ -79,6 +82,11 @@ sceneContainer.addEventListener("pointerup", (e) => {
     );
     if (moveDist < 5) {
         isQrState = !isQrState;
+        if (isQrState) {
+            targetCamPos.copy(camPosQR);
+        } else {
+            targetCamPos.copy(camPos3D);
+        }
     }
 });
 
@@ -132,7 +140,7 @@ function initVoxelSystem() {
     scene.add(instancedMesh);
 }
 
-// 1. רשת ה-QR (ממוקמת במרכז, בגובה Y שלילי קל)
+// 1. רשת ה-QR
 setTimeout(() => {
     const qrCanvas = document.querySelector("#qrcode canvas");
     if (!qrCanvas) return;
@@ -156,7 +164,7 @@ setTimeout(() => {
 
                 blocks.push({
                     x: posX,
-                    y: -0.8, // בסיס הברקוד ממוקם תחת מרכז המסך
+                    y: -0.8,
                     z: posZ,
                     scaleY: 0.35,
                     color: qrBaseColor.clone().lerp(qrEdgeColor, Math.min(1, dist / 2.2))
@@ -168,7 +176,7 @@ setTimeout(() => {
     initVoxelSystem();
 }, 500);
 
-// 2. הלוגו העומד (במרכז המדויק של המסך)
+// 2. הלוגו העומד
 const img = new Image();
 img.src = "logo.png";
 
@@ -194,7 +202,6 @@ img.onload = () => {
             const index = (y * canvas.width + x) * 4;
             if (data[index + 3] > 128) {
                 const posX = (x - centerX) * scale;
-                // ממוקם בול ב־Y = 0 כך שהלוגו מרוכז לחלוטין על המסך
                 const posY = -(y - centerY) * scale; 
                 const heightRatio = THREE.MathUtils.clamp((posY + 1.5) / 3.0, 0, 1);
 
@@ -214,13 +221,14 @@ img.onload = () => {
     initVoxelSystem();
 };
 
-// *הערה: קווי הרשת (Grid Helper) הוסרו לחלוטין לבקשתך כך שהרקע נקי לגמרי*
-
 function animate() {
     requestAnimationFrame(animate);
 
     const target = isQrState ? 1 : 0;
     morphProgress += (target - morphProgress) * 0.08;
+
+    // מעבר חלק של מיקום המצלמה שמונע גליצ'ים בבקרים
+    camera.position.lerp(targetCamPos, 0.08);
 
     if (instancedMesh && logoBlocks && qrBlocks && currentTransforms) {
         for (let i = 0; i < blockCount; i++) {
