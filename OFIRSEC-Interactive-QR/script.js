@@ -178,7 +178,7 @@ setTimeout(() => {
 
 // 2. הלוגו העומד
 const img = new Image();
-img.src = "logo.PNG";
+img.src = "logo.png";
 
 img.onload = () => {
     const canvas = document.createElement("canvas");
