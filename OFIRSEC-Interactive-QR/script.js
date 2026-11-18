@@ -37,15 +37,15 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 sceneContainer.appendChild(renderer.domElement);
 
 // תאורה
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.85);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0x80ffea, 1.8);
+const dirLight = new THREE.DirectionalLight(0x80ffea, 1.9);
 dirLight.position.set(5, 10, 7);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
-const backLight = new THREE.DirectionalLight(0x1E8BC3, 1.2);
+const backLight = new THREE.DirectionalLight(0x38bdf8, 1.4);
 backLight.position.set(-5, 4, -6);
 scene.add(backLight);
 
@@ -54,19 +54,17 @@ const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(
     new THREE.Vector2(sceneContainer.clientWidth, sceneContainer.clientHeight),
-    0.35,
+    0.3,
     0.4,
-    0.88
+    0.9
 ));
 
-// בקרים חופשיים לחלוטין לסיבוב 360 מעלות חלק ומדהים
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.rotateSpeed = 1.0; 
+controls.rotateSpeed = 1.0;
 controls.target.set(0, 0, 0);
 
-// הפרדה מדויקת בין גרירה (סיבוב חופשי) ללחיצה נקייה (התמוססות לברקוד)
 let pointerDownPos = { x: 0, y: 0 };
 let isQrState = false;
 let morphProgress = 0;
@@ -80,7 +78,6 @@ sceneContainer.addEventListener("pointerup", (e) => {
         e.clientX - pointerDownPos.x,
         e.clientY - pointerDownPos.y
     );
-    // קליק נקי בלי לגרור מפעיל/מכבה את הברקוד
     if (moveDist < 5) {
         isQrState = !isQrState;
     }
@@ -88,6 +85,7 @@ sceneContainer.addEventListener("pointerup", (e) => {
 
 let logoBlocks = null;
 let qrBlocks = null;
+let rawLogoPoints = null;
 let instancedMesh = null;
 let currentTransforms = null;
 let blockCount = 0;
@@ -104,7 +102,7 @@ function initVoxelSystem() {
     const boxGeo = new THREE.BoxGeometry(0.052, 0.052, 0.052);
     const boxMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        roughness: 0.3,
+        roughness: 0.25,
         metalness: 0.2
     });
 
@@ -136,17 +134,19 @@ function initVoxelSystem() {
     scene.add(instancedMesh);
 }
 
-// 1. רשת ה-QR
-setTimeout(() => {
+function buildCombinedQrAndCenterLogo() {
     const qrCanvas = document.querySelector("#qrcode canvas");
-    if (!qrCanvas) return;
+    if (!qrCanvas || !rawLogoPoints) return;
 
     const ctx = qrCanvas.getContext("2d");
     const data = ctx.getImageData(0, 0, qrCanvas.width, qrCanvas.height).data;
     const blocks = [];
-    const step = Math.max(1, Math.floor(qrCanvas.width / 75));
+    const step = Math.max(1, Math.floor(qrCanvas.width / 78));
     const scaleFactor = isMobile ? 2.6 : 3.6;
     const scale = scaleFactor / qrCanvas.width;
+
+    // חלון מרכזי מוקטן ומדויק ששומר על מרחב בטוח לחלוטין לסריקה
+    const centerHoleHalfSize = scaleFactor * 0.17;
 
     const qrBaseColor = new THREE.Color(0x00f5d4);
     const qrEdgeColor = new THREE.Color(0x1E8BC3);
@@ -157,8 +157,12 @@ setTimeout(() => {
             if (data[index] < 128) {
                 const posX = (x - qrCanvas.width / 2) * scale;
                 const posZ = (y - qrCanvas.height / 2) * scale;
-                const dist = Math.hypot(posX, posZ);
 
+                if (Math.abs(posX) < centerHoleHalfSize && Math.abs(posZ) < centerHoleHalfSize) {
+                    continue;
+                }
+
+                const dist = Math.hypot(posX, posZ);
                 blocks.push({
                     x: posX,
                     y: -0.8,
@@ -169,11 +173,26 @@ setTimeout(() => {
             }
         }
     }
+
+    // לוגו מרכזי לבן, דק, עדין ומרווח שאינו פוגע בסריקה כלל
+    const miniLogoScale = 0.28; 
+    const centerLogoColor = new THREE.Color(0xffffff); // לבן נקי ובוהק
+
+    for (let i = 0; i < rawLogoPoints.length; i += 2) { // דגימה מדוללת (כל נקודה שנייה) למראה דק ואוורירי
+        const pt = rawLogoPoints[i];
+        blocks.push({
+            x: pt.x * miniLogoScale,
+            y: -0.76,
+            z: -pt.y * miniLogoScale,
+            scaleY: 0.35, // נמוך ודק יותר
+            color: centerLogoColor
+        });
+    }
+
     qrBlocks = blocks;
     initVoxelSystem();
-}, 500);
+}
 
-// 2. הלוגו העומד
 const img = new Image();
 img.src = "logo.png";
 
@@ -186,13 +205,14 @@ img.onload = () => {
 
     const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const blocks = [];
+    const flatPoints = [];
     const step = Math.max(1, Math.floor(canvas.width / 95));
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     const logoScaleFactor = isMobile ? 2.2 : 3.0;
     const scale = logoScaleFactor / Math.max(canvas.width, canvas.height);
 
-    const bottomColor = new THREE.Color(0x0d47a1);
+    const bottomColor = new THREE.Color(0x0284c7);
     const topColor = new THREE.Color(0x64dfdf);
 
     for (let y = 0; y < canvas.height; y += step) {
@@ -200,8 +220,10 @@ img.onload = () => {
             const index = (y * canvas.width + x) * 4;
             if (data[index + 3] > 128) {
                 const posX = (x - centerX) * scale;
-                const posY = -(y - centerY) * scale; 
+                const posY = -(y - centerY) * scale;
                 const heightRatio = THREE.MathUtils.clamp((posY + 1.5) / 3.0, 0, 1);
+
+                flatPoints.push({ x: posX, y: posY });
 
                 for (let z = -0.06; z <= 0.06; z += 0.06) {
                     blocks.push({
@@ -215,8 +237,11 @@ img.onload = () => {
             }
         }
     }
+
     logoBlocks = blocks;
-    initVoxelSystem();
+    rawLogoPoints = flatPoints;
+
+    setTimeout(buildCombinedQrAndCenterLogo, 500);
 };
 
 function animate() {
@@ -225,7 +250,6 @@ function animate() {
     const target = isQrState ? 1 : 0;
     morphProgress += (target - morphProgress) * 0.08;
 
-    // כשעוברים למצב ברקוד, אנחנו מכוונים את המצלמה בעדינות ישירות מלמעלה כדי שיהיה סריק ונוח
     if (isQrState) {
         camera.position.x += (0 - camera.position.x) * 0.05;
         camera.position.y += (6.5 - camera.position.y) * 0.05;
