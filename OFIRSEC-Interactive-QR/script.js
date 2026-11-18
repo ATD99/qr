@@ -24,7 +24,10 @@ const camera = new THREE.PerspectiveCamera(
     0.1,
     1000
 );
-camera.position.set(0, 0, 7.0);
+
+const isMobile = window.innerWidth < 768;
+const baseZ = isMobile ? 9.5 : 7.0;
+camera.position.set(0, 0, baseZ);
 
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -56,17 +59,14 @@ composer.addPass(new UnrealBloomPass(
     0.88
 ));
 
+// בקרים חופשיים לחלוטין לסיבוב 360 מעלות חלק ומדהים
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
+controls.rotateSpeed = 1.0; 
 controls.target.set(0, 0, 0);
 
-// יעדי מיקום מצלמה חלקים למצבים השונים
-const camPos3D = new THREE.Vector3(0, 0, 7.0);
-const camPosQR = new THREE.Vector3(0, 6.2, 0.001); // מבט עליון ישר ונקי לברקוד
-const targetCamPos = new THREE.Vector3(0, 0, 7.0);
-
-// הפרדה חכמה בין גרירה (סיבוב) ללחיצה נקייה
+// הפרדה מדויקת בין גרירה (סיבוב חופשי) ללחיצה נקייה (התמוססות לברקוד)
 let pointerDownPos = { x: 0, y: 0 };
 let isQrState = false;
 let morphProgress = 0;
@@ -80,13 +80,9 @@ sceneContainer.addEventListener("pointerup", (e) => {
         e.clientX - pointerDownPos.x,
         e.clientY - pointerDownPos.y
     );
+    // קליק נקי בלי לגרור מפעיל/מכבה את הברקוד
     if (moveDist < 5) {
         isQrState = !isQrState;
-        if (isQrState) {
-            targetCamPos.copy(camPosQR);
-        } else {
-            targetCamPos.copy(camPos3D);
-        }
     }
 });
 
@@ -149,7 +145,8 @@ setTimeout(() => {
     const data = ctx.getImageData(0, 0, qrCanvas.width, qrCanvas.height).data;
     const blocks = [];
     const step = Math.max(1, Math.floor(qrCanvas.width / 75));
-    const scale = 3.6 / qrCanvas.width;
+    const scaleFactor = isMobile ? 2.6 : 3.6;
+    const scale = scaleFactor / qrCanvas.width;
 
     const qrBaseColor = new THREE.Color(0x00f5d4);
     const qrEdgeColor = new THREE.Color(0x1E8BC3);
@@ -192,7 +189,8 @@ img.onload = () => {
     const step = Math.max(1, Math.floor(canvas.width / 95));
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const scale = 3.0 / Math.max(canvas.width, canvas.height);
+    const logoScaleFactor = isMobile ? 2.2 : 3.0;
+    const scale = logoScaleFactor / Math.max(canvas.width, canvas.height);
 
     const bottomColor = new THREE.Color(0x0d47a1);
     const topColor = new THREE.Color(0x64dfdf);
@@ -227,8 +225,12 @@ function animate() {
     const target = isQrState ? 1 : 0;
     morphProgress += (target - morphProgress) * 0.08;
 
-    // מעבר חלק של מיקום המצלמה שמונע גליצ'ים בבקרים
-    camera.position.lerp(targetCamPos, 0.08);
+    // כשעוברים למצב ברקוד, אנחנו מכוונים את המצלמה בעדינות ישירות מלמעלה כדי שיהיה סריק ונוח
+    if (isQrState) {
+        camera.position.x += (0 - camera.position.x) * 0.05;
+        camera.position.y += (6.5 - camera.position.y) * 0.05;
+        camera.position.z += (0.01 - camera.position.z) * 0.05;
+    }
 
     if (instancedMesh && logoBlocks && qrBlocks && currentTransforms) {
         for (let i = 0; i < blockCount; i++) {
