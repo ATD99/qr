@@ -1,0 +1,57 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #021224;
+}
+
+#scene-container {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ממוקם מתחת לקרחון ולא בתחתית העמוד */
+#surface-reveal {
+  position: fixed;
+  left: 50%;
+  top: 66%;
+  transform: translate(-50%, -50%) translateY(10px);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 1.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#surface-reveal .reveal-title {
+  font-family: "Century Gothic", "Montserrat", sans-serif;
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: clamp(1.1rem, 2.3vw, 2.05rem);
+  line-height: 1.2;
+  letter-spacing: 0.44em;
+  color: #092542;
+  text-shadow:
+    0 1px 0 rgba(186, 230, 253, 0.35),
+    0 8px 22px rgba(2, 18, 36, 0.45);
+  transition: letter-spacing 1.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#surface-reveal.is-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) translateY(0);
+}
+
+#surface-reveal.is-visible .reveal-title {
+  letter-spacing: 0.24em;
+}
