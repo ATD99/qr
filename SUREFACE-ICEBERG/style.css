@@ -56,10 +56,15 @@ body {
   letter-spacing: 0.24em;
 }
 
-/* התאמה למובייל: שורה אחת, גודל קטן יותר, ואותו צבע בדיוק */
+/* התאמה למובייל: צבע כחול כמו בדסקטופ, מיקום גבוה יותר, ושורה אחת */
 @media (max-width: 767px) {
   #surface-reveal {
+    top: 56%;
     max-width: 92vw;
+  }
+
+  #surface-reveal.is-visible {
+    transform: translate(-50%, -50%) translateY(0);
   }
 
   #surface-reveal .reveal-title,
@@ -67,6 +72,7 @@ body {
     white-space: nowrap;
     font-size: clamp(0.85rem, 3.6vw, 1.15rem);
     letter-spacing: 0.12em;
-    color: #092542;
+    color: #092542 !important;
+    -webkit-text-fill-color: #092542 !important;
   }
 }
