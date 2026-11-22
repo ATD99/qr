@@ -313,14 +313,62 @@ function createSecondaryChunkGeo(seed, sx, sy, sz) {
     return geo;
 }
 
-const secondaryConfigs = [
-    { x: -15, z: -16, sx: 1.15, sy: 0.55, sz: 0.95, rotY: 0.8, seed: 1.1 },
-    { x: 18, z: -22, sx: 1.4, sy: 0.62, sz: 1.1, rotY: 2.1, seed: 2.4 },
-    { x: -28, z: 12, sx: 0.95, sy: 0.45, sz: 0.85, rotY: 1.4, seed: 3.7 },
-    { x: 24, z: 14, sx: 1.25, sy: 0.5, sz: 1.0, rotY: 4.2, seed: 5.0 },
-    { x: -9, z: -38, sx: 1.6, sy: 0.68, sz: 1.2, rotY: 0.3, seed: 6.3 },
-    { x: 34, z: -10, sx: 0.9, sy: 0.42, sz: 0.8, rotY: 2.9, seed: 7.6 }
-];
+function seededRand(seed) {
+    const x = Math.sin(seed * 91.3458) * 47453.5453;
+    return x - Math.floor(x);
+}
+
+function buildSecondaryConfigs(count = 28) {
+    const configs = [
+        { x: -15, z: -16, sx: 1.15, sy: 0.55, sz: 0.95, rotY: 0.8, seed: 1.1 },
+        { x: 18, z: -22, sx: 1.4, sy: 0.62, sz: 1.1, rotY: 2.1, seed: 2.4 },
+        { x: -28, z: 12, sx: 0.95, sy: 0.45, sz: 0.85, rotY: 1.4, seed: 3.7 },
+        { x: 24, z: 14, sx: 1.25, sy: 0.5, sz: 1.0, rotY: 4.2, seed: 5.0 },
+        { x: -9, z: -38, sx: 1.6, sy: 0.68, sz: 1.2, rotY: 0.3, seed: 6.3 },
+        { x: 34, z: -10, sx: 0.9, sy: 0.42, sz: 0.8, rotY: 2.9, seed: 7.6 }
+    ];
+
+    let attempt = 0;
+    while (configs.length < count && attempt < count * 8) {
+        attempt++;
+        const s = 10 + attempt * 1.37;
+        const r1 = seededRand(s);
+        const r2 = seededRand(s + 3.1);
+        const r3 = seededRand(s + 7.7);
+        const r4 = seededRand(s + 11.2);
+        const r5 = seededRand(s + 15.9);
+
+        // פיזור על פני האוקיינוס ממרחק בינוני ועד עומק האופק
+        const radius = 14 + Math.pow(r1, 0.85) * 92;
+        const angle = (r2 - 0.5) * Math.PI * 1.35 - Math.PI * 0.5;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius - 10;
+
+        // שמירה על מרחק נקי מהקרחון המרכזי ומקרחונים קיימים
+        const distFromCenter = Math.hypot(x, z);
+        if (distFromCenter < 11) continue;
+
+        const tooClose = configs.some((c) => Math.hypot(c.x - x, c.z - z) < 10.5);
+        if (tooClose) continue;
+
+        const depthFactor = THREE.MathUtils.clamp((radius - 14) / 92, 0, 1);
+        const baseScale = THREE.MathUtils.lerp(0.65, 2.25, depthFactor) * (0.75 + r3 * 0.55);
+
+        configs.push({
+            x,
+            z,
+            sx: baseScale * (0.85 + r4 * 0.45),
+            sy: baseScale * (0.36 + r5 * 0.22),
+            sz: baseScale * (0.75 + r3 * 0.4),
+            rotY: r4 * Math.PI * 2,
+            seed: s
+        });
+    }
+
+    return configs;
+}
+
+const secondaryConfigs = buildSecondaryConfigs(28);
 
 secondaryConfigs.forEach((cfg, idx) => {
     const geo = createSecondaryChunkGeo(cfg.seed, cfg.sx, cfg.sy, cfg.sz);
@@ -776,7 +824,6 @@ function getRisenLookAt() {
 }
 
 const scoutStartPos = getScoutPosition(0);
-const scoutEndPos = getScoutPosition(1);
 const currentLookAt = new THREE.Vector3(0, 0.4, 0);
 const targetCamPos = scoutStartPos.clone();
 const targetLookAt = new THREE.Vector3(0, 0.4, 0);
