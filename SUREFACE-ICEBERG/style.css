@@ -59,7 +59,7 @@ body {
 /* התאמה למובייל: צבע כחול כמו בדסקטופ, מיקום גבוה יותר, ושורה אחת */
 @media (max-width: 767px) {
   #surface-reveal {
-    top: 56%;
+    top: 65%;
     max-width: 92vw;
   }
 
