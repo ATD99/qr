@@ -10,9 +10,26 @@ const horizonFogColor = new THREE.Color(0xbde0fe);
 scene.background = skyColor.clone();
 scene.fog = new THREE.FogExp2(0xbde0fe, 0.0068);
 
+const DESKTOP_FOV = 45;
+const MOBILE_FOV = 55;
+
+function isMobileViewport() {
+    return container.clientWidth < 768 || container.clientWidth < container.clientHeight;
+}
+
+function getResponsiveFov() {
+    const aspect = container.clientWidth / Math.max(1, container.clientHeight);
+    if (aspect >= 1.15) return DESKTOP_FOV;
+    if (aspect >= 0.75) {
+        const t = (1.15 - aspect) / (1.15 - 0.75);
+        return THREE.MathUtils.lerp(DESKTOP_FOV, MOBILE_FOV, t);
+    }
+    return MOBILE_FOV;
+}
+
 const camera = new THREE.PerspectiveCamera(
-    45,
-    container.clientWidth / container.clientHeight,
+    getResponsiveFov(),
+    container.clientWidth / Math.max(1, container.clientHeight),
     0.1,
     1200
 );
@@ -724,14 +741,38 @@ let elapsedSceneTime = 0;
 let bubbleVisibility = 1.0;
 
 function getScoutPosition(p) {
-    // קשת חלקה ונקייה במבט-על רחוק ללא התקרבות פנימה
+    const mobile = isMobileViewport();
     const angle = THREE.MathUtils.lerp(-0.42, 0.32, p);
-    const radius = 92;
+    const radius = mobile ? 104 : 92;
     return new THREE.Vector3(
         Math.sin(angle) * radius,
-        THREE.MathUtils.lerp(36, 32, p),
+        THREE.MathUtils.lerp(mobile ? 41 : 36, mobile ? 36 : 32, p),
         Math.cos(angle) * radius
     );
+}
+
+function getApproachCameraPos() {
+    return isMobileViewport()
+        ? new THREE.Vector3(0.35, 1.55, 10.6)
+        : new THREE.Vector3(0.45, 1.35, 7.8);
+}
+
+function getApproachLookAt() {
+    return isMobileViewport()
+        ? new THREE.Vector3(0, 0.55, 0)
+        : new THREE.Vector3(0, 0.45, 0);
+}
+
+function getRisenCameraPos() {
+    return isMobileViewport()
+        ? new THREE.Vector3(0, 2.55, 18.5)
+        : new THREE.Vector3(0, 2.25, 14.2);
+}
+
+function getRisenLookAt() {
+    return isMobileViewport()
+        ? new THREE.Vector3(0, 2.75, 0)
+        : new THREE.Vector3(0, 2.85, 0);
 }
 
 const scoutStartPos = getScoutPosition(0);
@@ -767,6 +808,7 @@ function updateSceneSequence(dt, totalElapsed) {
 
     let baseIceY = TIP_START_Y;
     const isUpAboveWater = elapsedSceneTime >= RISE_END;
+    const mobile = isMobileViewport();
 
     // פעימה עדינה לאדוות בקו המים בזמן שהקרחון מתחיל להתרומם
     let targetLiftPulse = 0;
@@ -781,7 +823,6 @@ function updateSceneSequence(dt, totalElapsed) {
     );
 
     if (elapsedSceneTime < SCOUT_END) {
-        // מסלול סיור ישיר וחלק ללא פיגור/זיגזג
         const p = easeInOutSine(elapsedSceneTime / SCOUT_END);
         const pos = getScoutPosition(p);
         camera.position.copy(pos);
@@ -791,18 +832,18 @@ function updateSceneSequence(dt, totalElapsed) {
     } else if (elapsedSceneTime < APPROACH_END) {
         const p = easeOutCubic((elapsedSceneTime - SCOUT_END) / (APPROACH_END - SCOUT_END));
         targetCamPos.lerpVectors(
-            scoutEndPos,
-            new THREE.Vector3(0.45, 1.35, 7.8),
+            getScoutPosition(1),
+            getApproachCameraPos(),
             p
         );
-        targetLookAt.set(0, 0.45, 0);
+        targetLookAt.copy(getApproachLookAt());
         camera.position.lerp(targetCamPos, 0.11);
         currentLookAt.lerp(targetLookAt, 0.11);
         camera.lookAt(currentLookAt);
         baseIceY = TIP_START_Y;
     } else if (elapsedSceneTime < TIP_HOLD_END) {
-        targetCamPos.set(0.45, 1.35, 7.8);
-        targetLookAt.set(0, 0.45, 0);
+        targetCamPos.copy(getApproachCameraPos());
+        targetLookAt.copy(getApproachLookAt());
         camera.position.lerp(targetCamPos, 0.11);
         currentLookAt.lerp(targetLookAt, 0.11);
         camera.lookAt(currentLookAt);
@@ -810,13 +851,13 @@ function updateSceneSequence(dt, totalElapsed) {
     } else if (elapsedSceneTime < RISE_END) {
         const p = easeHeavyLift((elapsedSceneTime - TIP_HOLD_END) / (RISE_END - TIP_HOLD_END));
         targetCamPos.lerpVectors(
-            new THREE.Vector3(0.45, 1.35, 7.8),
-            new THREE.Vector3(0, 2.25, 14.2),
+            getApproachCameraPos(),
+            getRisenCameraPos(),
             p
         );
         targetLookAt.lerpVectors(
-            new THREE.Vector3(0, 0.45, 0),
-            new THREE.Vector3(0, 2.85, 0),
+            getApproachLookAt(),
+            getRisenLookAt(),
             p
         );
         camera.position.lerp(targetCamPos, 0.11);
@@ -824,11 +865,13 @@ function updateSceneSequence(dt, totalElapsed) {
         camera.lookAt(currentLookAt);
         baseIceY = THREE.MathUtils.lerp(TIP_START_Y, ABOVE_WATER_Y, p);
     } else {
-        const driftX = Math.sin(totalElapsed * 0.42) * 0.22;
-        const driftY = Math.cos(totalElapsed * 0.35) * 0.08;
-        const driftZ = Math.sin(totalElapsed * 0.28) * 0.28;
-        targetCamPos.set(driftX, 2.25 + driftY, 14.2 + driftZ);
-        targetLookAt.set(0, 2.85, 0);
+        const risenBase = getRisenCameraPos();
+        const driftScale = mobile ? 0.8 : 1.0;
+        const driftX = Math.sin(totalElapsed * 0.42) * 0.22 * driftScale;
+        const driftY = Math.cos(totalElapsed * 0.35) * 0.08 * driftScale;
+        const driftZ = Math.sin(totalElapsed * 0.28) * 0.28 * driftScale;
+        targetCamPos.set(risenBase.x + driftX, risenBase.y + driftY, risenBase.z + driftZ);
+        targetLookAt.copy(getRisenLookAt());
         camera.position.lerp(targetCamPos, 0.11);
         currentLookAt.lerp(targetLookAt, 0.11);
         camera.lookAt(currentLookAt);
@@ -924,8 +967,17 @@ function animate() {
 
 animate();
 
-window.addEventListener("resize", () => {
-    camera.aspect = container.clientWidth / container.clientHeight;
+function handleViewportResize() {
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    camera.fov = getResponsiveFov();
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(width, height);
+}
+
+window.addEventListener("resize", handleViewportResize);
+window.addEventListener("orientationchange", () => {
+    setTimeout(handleViewportResize, 120);
 });
