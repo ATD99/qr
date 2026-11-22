@@ -16,7 +16,7 @@ body {
   position: fixed;
   inset: 0;
   width: 100%;
-  height: 100%;
+  height: 100dvh;
 }
 
 /* ממוקם מתחת לקרחון ולא בתחתית העמוד */
@@ -54,4 +54,19 @@ body {
 
 #surface-reveal.is-visible .reveal-title {
   letter-spacing: 0.24em;
+}
+
+/* התאמה למובייל: שורה אחת, גודל קטן יותר, ואותו צבע בדיוק */
+@media (max-width: 767px) {
+  #surface-reveal {
+    max-width: 92vw;
+  }
+
+  #surface-reveal .reveal-title,
+  #surface-reveal.is-visible .reveal-title {
+    white-space: nowrap;
+    font-size: clamp(0.85rem, 3.6vw, 1.15rem);
+    letter-spacing: 0.12em;
+    color: #092542;
+  }
 }
