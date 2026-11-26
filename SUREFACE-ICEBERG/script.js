@@ -211,7 +211,7 @@ function createDetailedWaterNormals() {
 const waterNormals = createDetailedWaterNormals();
 const waterGeo = new THREE.PlaneGeometry(980, 980);
 
-const deepWaterHex = 0x021224;
+const deepWaterHex = 0x032b4f;
 const deepWaterVec = new THREE.Color(deepWaterHex);
 const horizonLinear = horizonFogColor.clone().convertSRGBToLinear();
 const sunSparkleDir = sunLight.position.clone().normalize();
@@ -252,6 +252,13 @@ water.material.onBeforeCompile = (shader) => {
         varying vec3 vWaterWorldPos;
         `
     );
+
+    // מבטל את השתקפות הקרחון מתוך mirrorSampler בלי לשבור את השיידר
+    shader.fragmentShader = shader.fragmentShader.replace(
+        /vec3\s+reflectionSample\s*=\s*vec3\s*\(\s*texture2D\s*\(\s*mirrorSampler\s*,[\s\S]*?\)\s*\)\s*;/g,
+        "vec3 reflectionSample = vec3(0.06, 0.25, 0.48);"
+    );
+
     shader.fragmentShader = shader.fragmentShader.replace(
         "gl_FragColor = vec4( color, 1.0 );",
         `
@@ -264,9 +271,8 @@ water.material.onBeforeCompile = (shader) => {
         float sunGlint = pow(clamp(dot(nWave, normalize(sunDirNorm + vec3(0.0, 1.0, 0.0))), 0.0, 1.0), 18.0);
         sculptedWater += vec3(0.35, 0.72, 0.95) * sunGlint * 0.26;
 
-        float iceRefMask = smoothstep(0.05, 0.26, length(color - baseDeep));
-        vec3 softReflection = mix(sculptedWater, color * 0.78, 0.55);
-        color = mix(sculptedWater, softReflection, clamp(0.015 + iceRefMask * 0.22, 0.0, 0.24));
+        vec3 deepNavyCore = vec3(0.015, 0.14, 0.31);
+        color = mix(sculptedWater, deepNavyCore, 0.35);
 
         // דעיכה חלקה לקצוות ולמרחק כדי שהאוקיינוס ייראה אינסופי ולא מרובע
         float distFromCenter = length(vWaterWorldPos.xz);
@@ -338,13 +344,11 @@ function buildSecondaryConfigs(count = 28) {
         const r4 = seededRand(s + 11.2);
         const r5 = seededRand(s + 15.9);
 
-        // פיזור על פני האוקיינוס ממרחק בינוני ועד עומק האופק
         const radius = 14 + Math.pow(r1, 0.85) * 92;
         const angle = (r2 - 0.5) * Math.PI * 1.35 - Math.PI * 0.5;
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius - 10;
 
-        // שמירה על מרחק נקי מהקרחון המרכזי ומקרחונים קיימים
         const distFromCenter = Math.hypot(x, z);
         if (distFromCenter < 11) continue;
 
@@ -475,10 +479,8 @@ scene.add(icebergGroup);
 
 const TIP_START_Y = -0.15;
 const ABOVE_WATER_Y = 3.25;
+const FALL_SUBMERGED_Y = -4.2;
 
-/**
- * בניית הקרחון המדויק מתוך הלוגו שלך עם החלקת שוליים + רטיבות עדינה באזור התחתון
- */
 function buildExactSmoothLogo(img) {
     const size = 512;
     const canvas = document.createElement("canvas");
@@ -756,7 +758,7 @@ if (img.complete && img.naturalWidth > 0) {
     buildExactSmoothLogo(img);
 }
 
-// חלקיקי אווירה ורסיסי ים עדינים במרחב
+// חלקיקי אווירה עדינים במרחב
 const ambientCount = 110;
 const ambientGeo = new THREE.IcosahedronGeometry(0.022, 0);
 const ambientMat = new THREE.MeshBasicMaterial({
@@ -779,11 +781,77 @@ for (let i = 0; i < ambientCount; i++) {
 }
 scene.add(ambientParticles);
 
-// תזמון: סיור חלק במבט-על רחוק -> התקרבות -> שהייה -> עלייה כבדה
+// התזות מים קטנות ועדינות ברגע הפגיעה במים
+const lightSplashCount = 26;
+const lightSplashGeo = new THREE.SphereGeometry(0.032, 8, 8);
+const lightSplashMat = new THREE.MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.72
+});
+const lightSplashMesh = new THREE.InstancedMesh(lightSplashGeo, lightSplashMat, lightSplashCount);
+lightSplashMesh.visible = false;
+scene.add(lightSplashMesh);
+
+const lightSplashDrops = Array.from({ length: lightSplashCount }, (_, idx) => {
+    const angle = (idx / lightSplashCount) * Math.PI * 2 + Math.random() * 0.25;
+    const speedXZ = 0.7 + Math.random() * 1.9;
+    return {
+        x: Math.cos(angle) * (0.45 + Math.random() * 0.75),
+        y: 0.04,
+        z: Math.sin(angle) * (0.45 + Math.random() * 0.75),
+        vx: Math.cos(angle) * speedXZ,
+        vy: 1.5 + Math.random() * 2.4,
+        vz: Math.sin(angle) * speedXZ,
+        scale: 0.5 + Math.random() * 0.9
+    };
+});
+
+let lightSplashAge = 0;
+let lightSplashActive = false;
+
+function updateLightSplash(dt) {
+    if (!lightSplashActive) {
+        lightSplashMesh.visible = false;
+        return;
+    }
+
+    lightSplashAge += dt;
+    if (lightSplashAge > 0.85) {
+        lightSplashActive = false;
+        lightSplashMesh.visible = false;
+        return;
+    }
+
+    lightSplashMesh.visible = true;
+    const gravity = 9.8;
+    const fade = Math.max(0, 1 - lightSplashAge / 0.85);
+
+    for (let i = 0; i < lightSplashCount; i++) {
+        const d = lightSplashDrops[i];
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        d.z += d.vz * dt;
+        d.vy -= gravity * dt;
+
+        const s = d.y > 0 ? d.scale * fade : 0.0001;
+        dummy.position.set(d.x, Math.max(0, d.y), d.z);
+        dummy.scale.setScalar(s);
+        dummy.updateMatrix();
+        lightSplashMesh.setMatrixAt(i, dummy.matrix);
+    }
+    lightSplashMesh.instanceMatrix.needsUpdate = true;
+}
+
+// תזמון: סיור -> התקרבות -> שהייה -> עלייה -> המתנה של 3.5 שניות למעלה -> נפילה למים -> חזרה למצב ההתחלתי
 const SCOUT_END = 3.2;
 const APPROACH_END = 5.0;
 const TIP_HOLD_END = 6.5;
 const RISE_END = 7.7;
+const TOP_WAIT_DURATION = 2;
+const FALL_START = RISE_END + TOP_WAIT_DURATION; // 11.2s
+const FALL_END = FALL_START + 0.85; // 12.05s
+const REFLOAT_END = FALL_END + 1.5; // 13.55s
 
 let elapsedSceneTime = 0;
 let bubbleVisibility = 1.0;
@@ -850,18 +918,27 @@ function easeHeavyLift(x) {
         : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+function easeHeavyFall(x) {
+    const t = Math.min(1, Math.max(0, x));
+    return t * t * t;
+}
+
 function updateSceneSequence(dt, totalElapsed) {
     elapsedSceneTime += dt;
 
     let baseIceY = TIP_START_Y;
-    const isUpAboveWater = elapsedSceneTime >= RISE_END;
+    let isFallingOrSubmerged = false;
+    const isUpAboveWater = elapsedSceneTime >= RISE_END && elapsedSceneTime < FALL_START;
     const mobile = isMobileViewport();
 
-    // פעימה עדינה לאדוות בקו המים בזמן שהקרחון מתחיל להתרומם
+    // פעימה עדינה לאדוות בקו המים בזמן שהקרחון מתחיל להתרומם או פוגע במים
     let targetLiftPulse = 0;
     if (elapsedSceneTime > TIP_HOLD_END && elapsedSceneTime < RISE_END) {
         const riseProgress = (elapsedSceneTime - TIP_HOLD_END) / (RISE_END - TIP_HOLD_END);
         targetLiftPulse = Math.sin(riseProgress * Math.PI);
+    } else if (elapsedSceneTime >= FALL_END - 0.08 && elapsedSceneTime <= FALL_END + 0.65) {
+        const hitProg = Math.min(1, (elapsedSceneTime - (FALL_END - 0.08)) / 0.73);
+        targetLiftPulse = Math.sin(hitProg * Math.PI) * 0.65;
     }
     rippleUniforms.uLiftPulse.value = THREE.MathUtils.lerp(
         rippleUniforms.uLiftPulse.value,
@@ -911,7 +988,8 @@ function updateSceneSequence(dt, totalElapsed) {
         currentLookAt.lerp(targetLookAt, 0.11);
         camera.lookAt(currentLookAt);
         baseIceY = THREE.MathUtils.lerp(TIP_START_Y, ABOVE_WATER_Y, p);
-    } else {
+    } else if (elapsedSceneTime < FALL_START) {
+        // המתנה של 3.5 שניות כשהקרחון למעלה
         const risenBase = getRisenCameraPos();
         const driftScale = mobile ? 0.8 : 1.0;
         const driftX = Math.sin(totalElapsed * 0.42) * 0.22 * driftScale;
@@ -923,12 +1001,56 @@ function updateSceneSequence(dt, totalElapsed) {
         currentLookAt.lerp(targetLookAt, 0.11);
         camera.lookAt(currentLookAt);
         baseIceY = ABOVE_WATER_Y;
+    } else if (elapsedSceneTime < FALL_END) {
+        // נפילה ושקיעה לתוך המים
+        isFallingOrSubmerged = true;
+        const fallP = easeHeavyFall((elapsedSceneTime - FALL_START) / (FALL_END - FALL_START));
+        baseIceY = THREE.MathUtils.lerp(ABOVE_WATER_Y, FALL_SUBMERGED_Y, fallP);
+
+        if (fallP >= 0.72 && !lightSplashActive && lightSplashAge === 0) {
+            lightSplashActive = true;
+            for (let i = 0; i < lightSplashCount; i++) {
+                const d = lightSplashDrops[i];
+                const angle = (i / lightSplashCount) * Math.PI * 2 + Math.random() * 0.25;
+                const speedXZ = 0.7 + Math.random() * 1.9;
+                d.x = Math.cos(angle) * (0.45 + Math.random() * 0.75);
+                d.y = 0.04;
+                d.z = Math.sin(angle) * (0.45 + Math.random() * 0.75);
+                d.vx = Math.cos(angle) * speedXZ;
+                d.vy = 1.5 + Math.random() * 2.4;
+                d.vz = Math.sin(angle) * speedXZ;
+            }
+        }
+
+        targetCamPos.lerpVectors(getRisenCameraPos(), getApproachCameraPos(), Math.min(1, fallP * 0.75));
+        targetLookAt.lerpVectors(getRisenLookAt(), getApproachLookAt(), Math.min(1, fallP * 0.75));
+        camera.position.lerp(targetCamPos, 0.12);
+        currentLookAt.lerp(targetLookAt, 0.12);
+        camera.lookAt(currentLookAt);
+    } else if (elapsedSceneTime < REFLOAT_END) {
+        // ציפה חזרה למצב ההתחלתי (חצי מעל פני המים)
+        const refloatP = easeInOutSine((elapsedSceneTime - FALL_END) / (REFLOAT_END - FALL_END));
+        baseIceY = THREE.MathUtils.lerp(FALL_SUBMERGED_Y, TIP_START_Y, refloatP);
+
+        targetCamPos.copy(getApproachCameraPos());
+        targetLookAt.copy(getApproachLookAt());
+        camera.position.lerp(targetCamPos, 0.11);
+        currentLookAt.lerp(targetLookAt, 0.11);
+        camera.lookAt(currentLookAt);
+    } else {
+        // מצב ציפה התחלתי (חצי מעל פני המים)
+        targetCamPos.copy(getApproachCameraPos());
+        targetLookAt.copy(getApproachLookAt());
+        camera.position.lerp(targetCamPos, 0.11);
+        currentLookAt.lerp(targetLookAt, 0.11);
+        camera.lookAt(currentLookAt);
+        baseIceY = TIP_START_Y;
     }
 
-    // התפוגגות הדרגתית של הבועות כשהקרחון מתחיל לעלות מעל המים
-    const targetBubbleVis = elapsedSceneTime <= TIP_HOLD_END
-        ? 1.0
-        : Math.max(0, 1.0 - (elapsedSceneTime - TIP_HOLD_END) / 0.85);
+    updateLightSplash(dt);
+
+    const showBubbles = elapsedSceneTime <= TIP_HOLD_END || elapsedSceneTime >= FALL_END;
+    const targetBubbleVis = showBubbles ? 1.0 : 0.0;
     bubbleVisibility = THREE.MathUtils.lerp(bubbleVisibility, targetBubbleVis, 0.12);
 
     if (isUpAboveWater && !hasRevealedSurfaceText && surfaceRevealEl) {
@@ -946,7 +1068,11 @@ function updateSceneSequence(dt, totalElapsed) {
 
     const mesh = icebergGroup.children[0];
     if (mesh) {
-        if (!isUpAboveWater) {
+        if (isFallingOrSubmerged) {
+            mesh.position.y = baseIceY;
+            mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, 0.22, 0.16);
+            mesh.rotation.z = THREE.MathUtils.lerp(mesh.rotation.z, -0.1, 0.16);
+        } else if (!isUpAboveWater) {
             const swayY = Math.sin(totalElapsed * 1.4) * 0.022;
             mesh.position.y = THREE.MathUtils.lerp(mesh.position.y, baseIceY + swayY, 0.11);
             mesh.rotation.z = THREE.MathUtils.lerp(mesh.rotation.z, Math.sin(totalElapsed * 0.9) * 0.015, 0.09);
