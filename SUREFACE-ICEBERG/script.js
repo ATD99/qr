@@ -745,18 +745,29 @@ function buildExactSmoothLogo(img) {
     };
 
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.y = TIP_START_Y;
+    mesh.position.set(0, TIP_START_Y, 0);
+    mesh.rotation.set(0, 0, 0);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     icebergGroup.add(mesh);
 }
 
+let logoBuilt = false;
+
 const img = new Image();
-img.onload = () => buildExactSmoothLogo(img);
+const tryBuildLogo = () => {
+    if (logoBuilt) return;
+    if (img.complete && img.naturalWidth > 0) {
+        logoBuilt = true;
+        while (icebergGroup.children.length > 0) {
+            icebergGroup.remove(icebergGroup.children[0]);
+        }
+        buildExactSmoothLogo(img);
+    }
+};
+img.onload = tryBuildLogo;
 img.src = "sureface-iceberg-mark-transparent.png";
-if (img.complete && img.naturalWidth > 0) {
-    buildExactSmoothLogo(img);
-}
+tryBuildLogo();
 
 // חלקיקי אווירה עדינים במרחב
 const ambientCount = 110;
@@ -843,15 +854,15 @@ function updateLightSplash(dt) {
     lightSplashMesh.instanceMatrix.needsUpdate = true;
 }
 
-// תזמון: סיור -> התקרבות -> שהייה -> עלייה -> המתנה של 3.5 שניות למעלה -> נפילה למים -> חזרה למצב ההתחלתי
+// תזמון: סיור -> התקרבות -> שהייה -> עלייה -> המתנה למעלה -> נפילה למים -> חזרה למצב ההתחלתי
 const SCOUT_END = 3.2;
 const APPROACH_END = 5.0;
 const TIP_HOLD_END = 6.5;
 const RISE_END = 7.7;
-const TOP_WAIT_DURATION = 2;
-const FALL_START = RISE_END + TOP_WAIT_DURATION; // 11.2s
-const FALL_END = FALL_START + 0.85; // 12.05s
-const REFLOAT_END = FALL_END + 1.5; // 13.55s
+const TOP_WAIT_DURATION = 3.5; // אפשר לקצר או להאריך כאן (בשניות)
+const FALL_START = RISE_END + TOP_WAIT_DURATION;
+const FALL_END = FALL_START + 0.85;
+const REFLOAT_END = FALL_END + 1.5;
 
 let elapsedSceneTime = 0;
 let bubbleVisibility = 1.0;
@@ -989,7 +1000,7 @@ function updateSceneSequence(dt, totalElapsed) {
         camera.lookAt(currentLookAt);
         baseIceY = THREE.MathUtils.lerp(TIP_START_Y, ABOVE_WATER_Y, p);
     } else if (elapsedSceneTime < FALL_START) {
-        // המתנה של 3.5 שניות כשהקרחון למעלה
+        // המתנה כשהקרחון למעלה
         const risenBase = getRisenCameraPos();
         const driftScale = mobile ? 0.8 : 1.0;
         const driftX = Math.sin(totalElapsed * 0.42) * 0.22 * driftScale;
@@ -1139,6 +1150,39 @@ function animate() {
 }
 
 animate();
+
+function resetSceneOnReload() {
+    elapsedSceneTime = 0;
+    bubbleVisibility = 1.0;
+    hasRevealedSurfaceText = false;
+    if (surfaceRevealEl) {
+        surfaceRevealEl.classList.remove("is-visible");
+    }
+    lightSplashActive = false;
+    lightSplashAge = 0;
+    lightSplashMesh.visible = false;
+    rippleUniforms.uLiftPulse.value = 0;
+
+    const startPos = getScoutPosition(0);
+    camera.position.copy(startPos);
+    currentLookAt.set(0, 0.4, 0);
+    targetCamPos.copy(startPos);
+    targetLookAt.set(0, 0.4, 0);
+    camera.lookAt(currentLookAt);
+
+    const mesh = icebergGroup.children[0];
+    if (mesh) {
+        mesh.position.set(0, TIP_START_Y, 0);
+        mesh.rotation.set(0, 0, 0);
+    }
+    clock.start();
+}
+
+window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+        resetSceneOnReload();
+    }
+});
 
 function handleViewportResize() {
     const width = Math.max(1, container.clientWidth);
